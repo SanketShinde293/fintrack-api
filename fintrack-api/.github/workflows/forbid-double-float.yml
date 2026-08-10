@@ -1,0 +1,27 @@
+name: Forbid double/float in Java
+
+on:
+  pull_request:
+  push:
+    branches: [ main, 'pr/*' ]
+
+jobs:
+  forbid-float-double:
+    name: Fail if Java sources use double or float
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Scan for forbidden types
+        run: |
+          set -euo pipefail
+          MATCHES=$(grep -R --line-number --exclude-dir=target --exclude-dir=.git --include=*.java -E "\b(double|float)\b" || true)
+          if [ -n "$MATCHES" ]; then
+            echo "Forbidden types found in Java sources:";
+            echo "$MATCHES";
+            exit 1;
+          fi
+
+      - name: Success
+        run: echo "No forbidden primitive floating types found in Java sources." 
