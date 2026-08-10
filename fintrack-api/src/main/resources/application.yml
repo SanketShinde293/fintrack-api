@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: fintrack-api
+server:
+  port: 8080
