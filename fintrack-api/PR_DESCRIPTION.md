@@ -1,22 +1,36 @@
 PR: Implement transaction and expense modules, tests, and review docs
 
 Summary
-- Adds a production-oriented transaction module (entity, repository, service, controller, DTOs) with JPA persistence and validation.  
-- Adds an expense-splitting feature (entities, service, controller) supporting equal and custom splits and net-balance calculations.  
+- Adds a production-oriented transaction module (entity, repository, service, controller, DTOs) with JPA persistence and validation.
+- Adds an expense-splitting feature (entities, service, controller) supporting equal and custom splits and net-balance calculations.
 - Adds unit and integration tests for transaction and expense code, and `REVIEW.md`, `PROMPTS.md`, and other documentation.
 
 AI Tool Disclosure
-- Code and tests were generated and iteratively refined with the assistance of an AI coding assistant. Human review and corrections were applied to address financial precision (replacing `double` with `BigDecimal`), ownership enforcement (IDOR fixes), and test compatibility with the runtime JVM (avoiding inline Mockito/ByteBuddy mocking where it failed).
+- Tools used: GitHub Copilot code completions, chat/code edit features, and iterative re-generation for tests.
+- Accepted vs overridden: Many structural suggestions were accepted (entity/service/controller scaffolding) but security/precision fixes were overridden by humans. Rough estimate: 60% AI / 40% manual edits.
 
-Risk Analysis
-- Precision risk: initial AI suggestions used primitive floats for currency. Mitigation: replaced with `BigDecimal` everywhere and set JPA `precision/scale`.  
-- Authorization risk: initial AI patterns included unscoped delete methods and lookups by id without `userId`. Mitigation: service methods require a requesting user id and use repository queries scoped to `userId`.  
-- Test fragility: CI runtime JVM may conflict with inline Mockito byte-buddy instrumentation. Mitigation: prefer standalone MockMvc and hand-written stubs in controller tests; avoid Mockito inline where unsupported.  
-- Raw SQL risk: avoid introducing raw JDBC in transaction/expense packages to preserve scoping and ORM-managed transactions.
+Testing & Trade-offs
+- Test coverage: Unit tests for services, `@DataJpaTest` for repositories, and controller slice tests using standalone `MockMvc` with stubs. All tests exercise ownership checks and monetary arithmetic; `mvn -f fintrack-api/pom.xml test` passed in the development environment.
+- Trade-off: For test stability across CI JDKs we avoided inline Mockito in controller tests (stubs instead), which increased test maintenance minimaly but improved reliability.
 
-Peer Review Simulation
-1. Reviewer A: "Verify that `TransactionService` methods enforce ownership via repository queries that include `userId` and that any `findById` usages are removed or replaced with `findByIdAndUserId`. Add tests that attempt to access another user's data."  
-2. Reviewer B: "Confirm that all monetary arithmetic uses `BigDecimal` with explicit rounding where needed. Add edge-case tests for very small/large amounts and currency scale."  
-3. Reviewer C: "Check controller layer for `@Valid` usage and that DTOs enforce constraints. Confirm slice tests don't accidentally bring in security auto-configuration — adjust to standalone MockMvc if needed." 
+Self-review checklist
+- [ ] Monetary fields use `BigDecimal` and have `precision/scale` where appropriate.
+- [ ] All service reads are scoped by `userId` or verify ownership before returning data.
+- [ ] No public mass-delete endpoints exist without admin restriction and audit.
+- [ ] Controllers validate DTOs via `@Valid` and map to domain models in services.
+- [ ] Tests run on local environment and avoid known ByteBuddy/Mockito inline issues.
+
+Peer Review Simulation Table
+
+| Reviewer | Comment | AI Blind Spot Addressed |
+|---|---:|---|
+| Reviewer A | Verify that `TransactionService` enforces `userId`-scoped queries and add cross-user access tests. | IDOR omission in generated code — reviewer asks for explicit `findByIdAndUserId` tests. |
+| Reviewer B | Confirm `BigDecimal` usage and add high-precision edge-case tests (tiny/large amounts). | AI tendency to use `double` for simplicity; reviewer asks for deterministic constructors and scale checks. |
+| Reviewer C | Validate controllers use `@Valid`, and controller tests avoid unstable inline mocking patterns. | AI-generated controller tests used inline mocking; reviewer requests stubs/MockMvc to eliminate ByteBuddy issues. |
+
+Section 6A — Why AI Misses The Penny-Remainder Blind Spot
+
+AI models often prioritize concise, correct-seeming arithmetic but do not internalize domain-specific rounding policies (e.g., allocating penny remainders when splitting amounts). They may produce mathematically-correct averages but not domain-appropriate remainder allocation. Humans must define the canonical rounding rules (who gets the remainder, consistent sign conventions) and add deterministic tests. In this PR we implemented `RoundingMode.HALF_UP` for equal splits and added tests that assert total shares sum to the original `totalAmount`.
+
 # PR Description Template
 Use this template when opening pull requests.
